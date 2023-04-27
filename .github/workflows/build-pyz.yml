@@ -276,5 +276,6 @@ jobs:
         if: github.event.release.tag_name
         env:
           GH_TOKEN: ${{ github.token }}
+        working-directory: ./src-pyz
         run: |
-          gh release upload ${{ github.ref_name }} dist/*
+          gh release upload ${{ github.ref_name }} ../dist/*
