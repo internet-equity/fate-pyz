@@ -1,0 +1,279 @@
+name: Build PYZ distribution
+
+on:
+  workflow_call:
+    inputs:
+      app-main:
+        required: true
+        type: string
+        description: |
+          Main/default entrypoint also used as name of zipapp distributable
+
+      app-alts:
+        default: ""
+        required: false
+        type: string
+        description: |
+          Alternate entrypoints into app to be distributed along with zipapp:
+          space-delimited names and/or regular expressions
+
+      app-solo:
+        default: true
+        required: false
+        type: boolean
+        description: |
+          Whether to distribute the standalone zipapp on its own (in addition to
+          archives bundling zipapp along with alternate entrypoints)
+
+jobs:
+  build-native:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: true
+      matrix:
+        os:
+          - ubuntu-latest
+
+        python-version:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up build dependencies
+        run: |
+          python -m pip install shiv
+
+      - name: Set up build directories
+        run: |
+          mkdir build
+
+      - name: Build zipapp
+        run: |
+          SHEBANG="/usr/bin/env python${{ matrix.python-version }}"
+
+          RELEASE_NAME="${{ github.event.release.tag_name }}"
+
+          BUILD_ID="${RELEASE_NAME:-${{ github.sha }}}"
+
+          shiv -c "${{ inputs.app-main }}" -o ./build/"${{ inputs.app-main }}" -p "$SHEBANG" --build-id "$BUILD_ID" .
+
+      - name: Make Python label
+        id: py_label
+        run:
+          PYTHON="${{ matrix.python-version }}"
+
+          echo "py_label=py${PYTHON//./}" >> $GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.app-main }}-pyz-${{ steps.py_label.outputs.py_label }}-x86_64
+          path: build/*
+
+  build-emulator:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+      matrix:
+        emulation:
+          - platform: arm64
+            repo: arm64v8
+
+        python-version:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: ${{ matrix.emulation.platform }}
+
+      - name: Set up build directories
+        run: |
+          mkdir build
+
+      - name: Build zipapp
+        run: |
+          IMAGE="${{ matrix.emulation.repo }}/python:${{ matrix.python-version }}-bullseye"
+
+          SHEBANG="/usr/bin/env python${{ matrix.python-version }}"
+
+          RELEASE_NAME="${{ github.event.release.tag_name }}"
+
+          BUILD_ID="${RELEASE_NAME:-${{ github.sha }}}"
+
+          cat <<EOF | docker run -v ${PWD}:/app/ -w /app/ --rm -i "$IMAGE" sh
+            python -m pip install shiv
+            shiv -c "${{ inputs.app-main }}" -o ./build/"${{ inputs.app-main }}" -p "$SHEBANG" --build-id "$BUILD_ID" .
+          EOF
+
+      - name: Make Python label
+        id: py_label
+        run:
+          PYTHON="${{ matrix.python-version }}"
+
+          echo "py_label=py${PYTHON//./}" >> $GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.app-main }}-pyz-${{ steps.py_label.outputs.py_label }}-${{ matrix.emulation.platform }}
+          path: build/*
+
+  dist-setup:
+    runs-on: ubuntu-latest
+
+    outputs:
+      alts: ${{steps.alts.outputs.alts}}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Determine alternate entrypoints
+        id: alts
+        shell: python
+        run: |
+          import os
+          import re
+          import tomllib
+
+          main = '${{ inputs.app-main }}'
+
+          alt_patterns = '${{ inputs.app-alts }}'.split()
+
+          if alt_patterns:
+              with open('pyproject.toml', 'rb') as fd:
+                  conf = tomllib.load(fd)
+
+              entrypoints = conf['tool']['poetry']['scripts'].keys()
+              alternates = [
+                  name for name in (entrypoints - {main})
+                  if any(re.fullmatch(alt_pattern, name)
+                         for alt_pattern in alt_patterns)
+              ]
+          else:
+              alternates = []
+
+          print('alternates:', alternates)
+
+          with open(os.getenv('GITHUB_OUTPUT'), 'a') as fd:
+              print('alts', ' '.join(alternates), sep='=', file=fd)
+
+  package-dist:
+    needs:
+      - build-native
+      - build-emulator
+      - dist-setup
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        arch:
+          - arm64
+          - x86_64
+
+        python-label:
+          - "38"
+          - "39"
+          - "310"
+          - "311"
+
+    steps:
+      - name: Checkout fate-pyz repository
+        uses: actions/checkout@v3
+        with:
+          # ensure we don't grab the *calling* repository
+          repository: internet-equity/fate-pyz
+          path: ./fate-pyz
+
+      - name: Set up work directories
+        run: |
+          mkdir build dist
+
+      - name: Retrieve build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ inputs.app-main }}-pyz-py${{ matrix.python-label }}-${{ matrix.arch }}
+          path: build
+
+      - name: Fix build artifact permissions
+        run: |
+          chmod +x ./build/"${{ inputs.app-main }}"
+
+      - name: Patch main entrypoint
+        run: |
+          zip -Aj ./build/"${{ inputs.app-main }}" ./fate-pyz/src/__main__.py
+
+      - name: Generate alternate entrypoints
+        if: needs.dist-setup.outputs.alts
+        run: |
+          echo -n ${{ needs.dist-setup.outputs.alts }} |
+            xargs -d " " -I {} \
+            cp --preserve=mode ./fate-pyz/src/entrypoint.sh ./build/{}
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          path: ./src-pyz
+
+      - name: Determine version label
+        working-directory: ./src-pyz
+        run: |
+          python -m pip install poetry
+
+          APP="$(poetry version -s)"
+
+          echo "LABEL=${APP}-py${{ matrix.python-label }}-${{ matrix.arch }}" >> $GITHUB_ENV
+
+      - name: Copy main distribution
+        if: inputs.app-solo
+        run: |
+          cp --preserve=mode ./build/"${{ inputs.app-main }}" ./dist/"${{ inputs.app-main }}"-"$LABEL"
+
+      - name: Bundle full distributions
+        if: needs.dist-setup.outputs.alts
+        shell: bash
+        run: |
+          ALTS=(${{ needs.dist-setup.outputs.alts }})
+
+          zip -j -Z store ./dist/"${{ inputs.app-main }}"-all-"$LABEL".zip ./build/"${{ inputs.app-main }}" "${ALTS[@]/#/./build/}"
+
+          tar -cf ./dist/"${{ inputs.app-main }}"-all-"$LABEL".tar -C ./build/ "${{ inputs.app-main }}" ${ALTS[@]}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.app-main }}-dist-${{ env.LABEL }}
+          path: dist
+
+      - name: Attach release assets
+        if: github.event.release.tag_name
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.ref_name }} dist/*

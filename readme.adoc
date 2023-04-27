@@ -1,0 +1,9 @@
+= Zipapps for Fate & Friends
+
+Tooling and glue code with which to build and distribute https://github.com/internet-equity/fate[Fate] and its derivatives (_i.e._ https://github.com/internet-equity/netrics[Netrics]).
+
+== Use
+
+To build an all-in-one executable distribution of your Fate-derived software – and optionally release it via GitHub – invoke this repository's workflow from your own.
+
+For examples, see the above-noted repositories.
