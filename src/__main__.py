@@ -45,9 +45,16 @@ def is_relative_to(path, root):
         return True
 
 
+#
+# see also! fate:src/fate/util/os.py
+#
 def system_path(path):
-    """Whether the given Path `path` appears to be a non-user path."""
-    # for now we'll just support linux-like
+    """Whether the given Path `path` appears to be a non-user path.
+
+    Returns bool – or None if called on an unsupported platform
+    (_i.e._ implicitly False).
+
+    """
     if sys.platform == 'linux':
         return not is_relative_to(path, '/home') and not is_relative_to(path, '/root')
 
