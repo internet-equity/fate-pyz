@@ -88,7 +88,8 @@ jobs:
       fail-fast: true
       matrix:
         emulation:
-          - platform: arm64
+          - arch: aarch64
+            platform: arm64
             repo: arm64v8
 
         python-version:
@@ -135,7 +136,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ inputs.app-main }}-pyz-${{ steps.py_label.outputs.py_label }}-${{ matrix.emulation.platform }}
+          name: ${{ inputs.app-main }}-pyz-${{ steps.py_label.outputs.py_label }}-${{ matrix.emulation.arch }}
           path: build/*
 
   dist-setup:
@@ -194,7 +195,7 @@ jobs:
     strategy:
       matrix:
         arch:
-          - arm64
+          - aarch64
           - x86_64
 
         python-label:
