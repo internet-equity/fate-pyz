@@ -1,6 +1,6 @@
 = Zipapps for Fate & Friends
 
-Tooling and glue code with which to build and distribute https://github.com/internet-equity/fate[Fate] and its derivatives (_i.e._ https://github.com/internet-equity/netrics[Netrics]).
+Tooling and glue code with which to build and distribute zipapps of https://github.com/internet-equity/fate[Fate] and its derivatives (_i.e._ https://github.com/internet-equity/netrics[Netrics]).
 
 == Use
 
