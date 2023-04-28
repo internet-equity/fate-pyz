@@ -90,7 +90,7 @@ jobs:
       - name: Set up matrices, etc.
         id: conf
         run: |
-          PY_VERSIONS='[
+          PY_VERSIONS=$(<<<'[
             {
               "number": "3.8",
               "label": "38"
@@ -107,25 +107,25 @@ jobs:
               "number": "3.11",
               "label": "311"
             }
-          ]'
+          ]' jq -c .)
 
           echo "py-versions=$PY_VERSIONS" >> $GITHUB_OUTPUT
 
-          EMULATION='[
+          EMULATION=$(<<<'[
             {
               "arch": "aarch64",
               "platform": "arm64",
               "repo": "arm64v8"
             }
-          ]'
+          ]' jq -c .)
 
           echo "platforms-emulation=$EMULATION" >> $GITHUB_OUTPUT
 
-          NATIVE='[
+          NATIVE=$(<<<'[
             {
               "arch": "x86_64"
             }
-          ]'
+          ]' jq -c .)
 
           echo "platforms-native=$NATIVE" >> $GITHUB_OUTPUT
 
