@@ -198,6 +198,7 @@ jobs:
 
   package-dist:
     needs:
+      - dist-setup
       - build-native
       - build-emulator
 
