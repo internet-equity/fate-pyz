@@ -215,6 +215,9 @@ jobs:
           - "310"
           - "311"
 
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout fate-pyz repository
         uses: actions/checkout@v3
