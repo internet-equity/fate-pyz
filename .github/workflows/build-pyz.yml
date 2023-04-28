@@ -26,7 +26,61 @@ on:
           archives bundling zipapp along with alternate entrypoints)
 
 jobs:
+  dist-setup:
+    runs-on: ubuntu-latest
+
+    outputs:
+      alts: ${{steps.alts.outputs.alts}}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Determine alternate entrypoints
+        id: alts
+        shell: python
+        run: |
+          import json
+          import os
+          import re
+          import tomllib
+
+          main = '${{ inputs.app-main }}'
+
+          alt_patterns = '${{ inputs.app-alts }}'.split()
+
+          if alt_patterns:
+              with open('pyproject.toml', 'rb') as fd:
+                  conf = tomllib.load(fd)
+
+              entrypoints = conf['tool']['poetry']['scripts'].keys()
+              alternates = [
+                  name for name in (entrypoints - {main})
+                  if any(re.fullmatch(alt_pattern, name)
+                         for alt_pattern in alt_patterns)
+              ]
+          else:
+              alternates = []
+
+          print('alternates:', alternates)
+
+          with open(os.getenv('GITHUB_OUTPUT'), 'a') as fd:
+              print('alts', ' '.join(alternates), sep='=', file=fd)
+
+          # fail workflow if neither alternates to bundle nor stand-alone
+          if not alternates and not json.loads('${{ inputs.app-solo }}'):
+              print('workflow has nothing to do!')
+              raise SystemExit(1)
+
   build-native:
+    needs:
+      - dist-setup
+
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -82,6 +136,9 @@ jobs:
           path: build/*
 
   build-emulator:
+    needs:
+      - dist-setup
+
     runs-on: ubuntu-latest
 
     strategy:
@@ -139,56 +196,10 @@ jobs:
           name: ${{ inputs.app-main }}-pyz-${{ steps.py_label.outputs.py_label }}-${{ matrix.emulation.arch }}
           path: build/*
 
-  dist-setup:
-    runs-on: ubuntu-latest
-
-    outputs:
-      alts: ${{steps.alts.outputs.alts}}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-
-      - name: Determine alternate entrypoints
-        id: alts
-        shell: python
-        run: |
-          import os
-          import re
-          import tomllib
-
-          main = '${{ inputs.app-main }}'
-
-          alt_patterns = '${{ inputs.app-alts }}'.split()
-
-          if alt_patterns:
-              with open('pyproject.toml', 'rb') as fd:
-                  conf = tomllib.load(fd)
-
-              entrypoints = conf['tool']['poetry']['scripts'].keys()
-              alternates = [
-                  name for name in (entrypoints - {main})
-                  if any(re.fullmatch(alt_pattern, name)
-                         for alt_pattern in alt_patterns)
-              ]
-          else:
-              alternates = []
-
-          print('alternates:', alternates)
-
-          with open(os.getenv('GITHUB_OUTPUT'), 'a') as fd:
-              print('alts', ' '.join(alternates), sep='=', file=fd)
-
   package-dist:
     needs:
       - build-native
       - build-emulator
-      - dist-setup
 
     runs-on: ubuntu-latest
 
