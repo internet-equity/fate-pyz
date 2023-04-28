@@ -203,7 +203,8 @@ jobs:
       - build-emulator
 
     outputs:
-      artifact-names: ${{ steps.label.outputs.artifact-name }}
+      artifact-names:
+        py${{ matrix.python-label }}-${{ matrix.arch }}: ${{ steps.label.outputs.artifact-name }}
 
     runs-on: ubuntu-latest
 
@@ -302,7 +303,7 @@ jobs:
 
     strategy:
       matrix:
-        artifact-name: ${{ fromJSON(needs.package-dist.outputs.artifact-names) }}
+        artifact-name: ${{ fromJSON(needs.package-dist.outputs.artifact-names.*) }}
 
     permissions:
       contents: write
