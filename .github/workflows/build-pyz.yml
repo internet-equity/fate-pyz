@@ -30,7 +30,13 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      alts: ${{steps.alts.outputs.alts}}
+      alts: ${{steps.pyproject.outputs.alts}}
+      app-version: ${{steps.pyproject.outputs.app-version}}
+      build-id: ${{steps.conf.outputs.build-id}}
+      py-versions: ${{steps.conf.outputs.py-versions}}
+      platforms: ${{steps.conf.outputs.platforms}}
+      platforms-native: ${{steps.conf.outputs.platforms-native}}
+      platforms-emulation: ${{steps.conf.outputs.platforms-emulation}}
 
     steps:
       - name: Checkout repository
@@ -41,8 +47,8 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: Determine alternate entrypoints
-        id: alts
+      - name: Determine app version & alternate entrypoints
+        id: pyproject
         shell: python
         run: |
           import json
@@ -54,10 +60,12 @@ jobs:
 
           alt_patterns = '${{ inputs.app-alts }}'.split()
 
-          if alt_patterns:
-              with open('pyproject.toml', 'rb') as fd:
-                  conf = tomllib.load(fd)
+          with open('pyproject.toml', 'rb') as fd:
+              conf = tomllib.load(fd)
 
+          app_version = conf['tool']['poetry']['version']
+
+          if alt_patterns:
               entrypoints = conf['tool']['poetry']['scripts'].keys()
               alternates = [
                   name for name in (entrypoints - {main})
@@ -67,15 +75,69 @@ jobs:
           else:
               alternates = []
 
+          print('app version:', app_version)
           print('alternates:', alternates)
 
           with open(os.getenv('GITHUB_OUTPUT'), 'a') as fd:
+              print('app-version', app_version, sep='=', file=fd)
               print('alts', ' '.join(alternates), sep='=', file=fd)
 
           # fail workflow if neither alternates to bundle nor stand-alone
           if not alternates and not json.loads('${{ inputs.app-solo }}'):
               print('workflow has nothing to do!')
               raise SystemExit(1)
+
+      - name: Set up matrices, etc.
+        id: conf
+        run: |
+          PY_VERSIONS='[
+            {
+              "number": "3.8",
+              "label": "38"
+            },
+            {
+              "number": "3.9",
+              "label": "39"
+            },
+            {
+              "number": "3.10",
+              "label": "310"
+            },
+            {
+              "number": "3.11",
+              "label": "311"
+            }
+          ]'
+
+          echo "py-versions=$PY_VERSIONS" >> $GITHUB_OUTPUT
+
+          EMULATION='[
+            {
+              "arch": "aarch64",
+              "platform": "arm64",
+              "repo": "arm64v8"
+            }
+          ]'
+
+          echo "platforms-emulation=$EMULATION" >> $GITHUB_OUTPUT
+
+          NATIVE='[
+            {
+              "arch": "x86_64"
+            }
+          ]'
+
+          echo "platforms-native=$NATIVE" >> $GITHUB_OUTPUT
+
+          PLATFORMS="$(jq -cs add <<<"$EMULATION $NATIVE")"
+
+          echo "platforms=$PLATFORMS" >> $GITHUB_OUTPUT
+
+          RELEASE_NAME="${{ github.event.release.tag_name }}"
+
+          BUILD_ID="${RELEASE_NAME:-${{ github.sha }}}"
+
+          echo "build-id=$BUILD_ID" >> $GITHUB_OUTPUT
 
   build-native:
     needs:
@@ -89,11 +151,7 @@ jobs:
         os:
           - ubuntu-latest
 
-        python-version:
-          - "3.8"
-          - "3.9"
-          - "3.10"
-          - "3.11"
+        python-version: ${{ fromJson(needs.dist-setup.outputs.py-versions) }}
 
     steps:
       - name: Checkout repository
@@ -102,7 +160,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version.number }}
 
       - name: Set up build dependencies
         run: |
@@ -114,25 +172,16 @@ jobs:
 
       - name: Build zipapp
         run: |
-          SHEBANG="/usr/bin/env python${{ matrix.python-version }}"
+          SHEBANG="/usr/bin/env python${{ matrix.python-version.number }}"
 
-          RELEASE_NAME="${{ github.event.release.tag_name }}"
-
-          BUILD_ID="${RELEASE_NAME:-${{ github.sha }}}"
+          BUILD_ID="${{ needs.dist-setup.outputs.build-id }}"
 
           shiv -c "${{ inputs.app-main }}" -o ./build/"${{ inputs.app-main }}" -p "$SHEBANG" --build-id "$BUILD_ID" .
-
-      - name: Make Python label
-        id: py_label
-        run:
-          PYTHON="${{ matrix.python-version }}"
-
-          echo "py_label=py${PYTHON//./}" >> $GITHUB_OUTPUT
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ inputs.app-main }}-pyz-${{ steps.py_label.outputs.py_label }}-x86_64
+          name: ${{ inputs.app-main }}-pyz-${{ matrix.python-version.label }}-x86_64
           path: build/*
 
   build-emulator:
@@ -144,16 +193,9 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        emulation:
-          - arch: aarch64
-            platform: arm64
-            repo: arm64v8
+        emulation: ${{ fromJson(needs.dist-setup.outputs.platforms-emulation) }}
 
-        python-version:
-          - "3.8"
-          - "3.9"
-          - "3.10"
-          - "3.11"
+        python-version: ${{ fromJson(needs.dist-setup.outputs.py-versions) }}
 
     steps:
       - name: Checkout repository
@@ -170,30 +212,21 @@ jobs:
 
       - name: Build zipapp
         run: |
-          IMAGE="${{ matrix.emulation.repo }}/python:${{ matrix.python-version }}-bullseye"
+          IMAGE="${{ matrix.emulation.repo }}/python:${{ matrix.python-version.number }}-bullseye"
 
-          SHEBANG="/usr/bin/env python${{ matrix.python-version }}"
+          SHEBANG="/usr/bin/env python${{ matrix.python-version.number }}"
 
-          RELEASE_NAME="${{ github.event.release.tag_name }}"
-
-          BUILD_ID="${RELEASE_NAME:-${{ github.sha }}}"
+          BUILD_ID="${{ needs.dist-setup.outputs.build-id }}"
 
           cat <<EOF | docker run -v ${PWD}:/app/ -w /app/ --rm -i "$IMAGE" sh
             python -m pip install shiv
             shiv -c "${{ inputs.app-main }}" -o ./build/"${{ inputs.app-main }}" -p "$SHEBANG" --build-id "$BUILD_ID" .
           EOF
 
-      - name: Make Python label
-        id: py_label
-        run:
-          PYTHON="${{ matrix.python-version }}"
-
-          echo "py_label=py${PYTHON//./}" >> $GITHUB_OUTPUT
-
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ inputs.app-main }}-pyz-${{ steps.py_label.outputs.py_label }}-${{ matrix.emulation.arch }}
+          name: ${{ inputs.app-main }}-pyz-${{ matrix.python-version.label }}-${{ matrix.emulation.arch }}
           path: build/*
 
   package-dist:
@@ -202,31 +235,18 @@ jobs:
       - build-native
       - build-emulator
 
-    outputs:
-      py${{ matrix.python-label }}-${{ matrix.arch }}: ${{ steps.label.outputs.artifact-name }}
-
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        arch:
-          - aarch64
-          - x86_64
+        arch: ${{ fromJson(needs.dist-setup.outputs.platforms.*.arch) }}
 
-        python-label:
-          - "38"
-          - "39"
-          - "310"
-          - "311"
+        python-label: ${{ fromJson(needs.dist-setup.outputs.py-versions.*.label) }}
+
+    env:
+      LABEL: ${{ needs.dist-setup.outputs.app-version }}-py${{ matrix.python-label }}-${{ matrix.arch }}
 
     steps:
-      - name: Checkout fate-pyz repository
-        uses: actions/checkout@v3
-        with:
-          # ensure we don't grab the *calling* repository
-          repository: internet-equity/fate-pyz
-          path: ./fate-pyz
-
       - name: Set up work directories
         run: |
           mkdir build dist
@@ -241,6 +261,13 @@ jobs:
         run: |
           chmod +x ./build/"${{ inputs.app-main }}"
 
+      - name: Checkout fate-pyz repository
+        uses: actions/checkout@v3
+        with:
+          # ensure we don't grab the *calling* repository
+          repository: internet-equity/fate-pyz
+          path: ./fate-pyz
+
       - name: Patch main entrypoint
         run: |
           zip -Aj ./build/"${{ inputs.app-main }}" ./fate-pyz/src/__main__.py
@@ -251,25 +278,6 @@ jobs:
           echo -n ${{ needs.dist-setup.outputs.alts }} |
             xargs -d " " -I {} \
             cp --preserve=mode ./fate-pyz/src/entrypoint.sh ./build/{}
-
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          path: ./src-pyz
-
-      - name: Determine version label
-        id: label
-        working-directory: ./src-pyz
-        run: |
-          python -m pip install poetry
-
-          APP="$(poetry version -s)"
-
-          LABEL="${APP}-py${{ matrix.python-label }}-${{ matrix.arch }}"
-
-          echo "LABEL=$LABEL" >> $GITHUB_ENV
-
-          echo "artifact-name=${{ inputs.app-main }}-dist-$LABEL" >> $GITHUB_OUTPUT
 
       - name: Copy main distribution
         if: inputs.app-solo
@@ -289,7 +297,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ steps.label.outputs.artifact-name }}
+          name: ${{ inputs.app-main }}-dist-${{ env.LABEL }}
           path: dist
 
   package-release:
@@ -299,10 +307,6 @@ jobs:
       - package-dist
 
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        artifact-name: ${{ fromJSON(needs.package-dist.outputs.*) }}
 
     permissions:
       contents: write
@@ -315,14 +319,13 @@ jobs:
         run: |
           mkdir dist
 
-      - name: Retrieve build artifacts
+      - name: Retrieve (all!) build artifacts
         uses: actions/download-artifact@v3
         with:
-          name: ${{ matrix.artifact-name }}
           path: dist
 
       - name: Attach release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload ${{ github.ref_name }} ./dist/*
+          gh release upload ${{ github.ref_name }} ./dist/*-dist-*/*
