@@ -181,7 +181,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ inputs.app-main }}-pyz-${{ matrix.python-version.label }}-x86_64
+          name: ${{ inputs.app-main }}-pyz-py${{ matrix.python-version.label }}-x86_64
           path: build/*
 
   build-emulator:
@@ -226,7 +226,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ inputs.app-main }}-pyz-${{ matrix.python-version.label }}-${{ matrix.emulation.arch }}
+          name: ${{ inputs.app-main }}-pyz-py${{ matrix.python-version.label }}-${{ matrix.emulation.arch }}
           path: build/*
 
   package-dist:
