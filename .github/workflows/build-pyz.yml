@@ -239,9 +239,9 @@ jobs:
 
     strategy:
       matrix:
-        arch: ${{ fromJson(needs.dist-setup.outputs.platforms.*.arch) }}
+        arch: ${{ fromJson(needs.dist-setup.outputs.platforms).*.arch }}
 
-        python-label: ${{ fromJson(needs.dist-setup.outputs.py-versions.*.label) }}
+        python-label: ${{ fromJson(needs.dist-setup.outputs.py-versions).*.label }}
 
     env:
       LABEL: ${{ needs.dist-setup.outputs.app-version }}-py${{ matrix.python-label }}-${{ matrix.arch }}
