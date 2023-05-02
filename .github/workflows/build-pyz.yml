@@ -87,6 +87,18 @@ jobs:
               print('workflow has nothing to do!')
               raise SystemExit(1)
 
+      - name: Check tag
+        if: github.event.release.tag_name
+        run: |
+          APP_VERSION="${{ steps.pyproject.outputs.app-version }}"
+          RELEASE_NAME="${{ github.event.release.tag_name }}"
+
+          if [ "$APP_VERSION" != "$RELEASE_NAME" ]
+          then
+            echo "app version (${APP_VERSION}) does not match release tag (${RELEASE_NAME})"
+            exit 1
+          fi
+
       - name: Set up matrices, etc.
         id: conf
         run: |
