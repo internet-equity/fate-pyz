@@ -88,10 +88,10 @@ jobs:
               raise SystemExit(1)
 
       - name: Check tag
-        if: github.event.release.tag_name
+        if: github.ref_type == 'tag'
         run: |
           APP_VERSION="${{ steps.pyproject.outputs.app-version }}"
-          RELEASE_NAME="${{ github.event.release.tag_name }}"
+          RELEASE_NAME="${{ github.ref_name }}"
 
           if [ "$APP_VERSION" != "$RELEASE_NAME" ]
           then
@@ -313,7 +313,7 @@ jobs:
           path: dist
 
   package-release:
-    if: github.event.release.tag_name
+    if: github.ref_type == 'tag'
 
     needs:
       - package-dist
