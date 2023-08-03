@@ -37,6 +37,7 @@ jobs:
       platforms: ${{steps.conf.outputs.platforms}}
       platforms-native: ${{steps.conf.outputs.platforms-native}}
       platforms-emulation: ${{steps.conf.outputs.platforms-emulation}}
+      release-tag: ${{steps.release-tag.outputs.tag}}
 
     steps:
       - name: Checkout repository
@@ -88,16 +89,34 @@ jobs:
               raise SystemExit(1)
 
       - name: Check tag
-        if: github.ref_type == 'tag'
+        id: release-tag
+        env:
+          APP_VERSION: ${{ steps.pyproject.outputs.app-version }}
         run: |
-          APP_VERSION="${{ steps.pyproject.outputs.app-version }}"
-          RELEASE_NAME="${{ github.ref_name }}"
+          #
+          # get list of tags (zero or more) pointing to this changeset
+          #
+          # use ls-remote s.t. don't require a full clone (above)
+          #
+          TAGS="$(git ls-remote --tags --refs --quiet | grep $GITHUB_SHA | awk '{print $2}' | awk -F / '{print $3}')"
 
-          if [ "$APP_VERSION" != "$RELEASE_NAME" ]
+          if [ -z "$TAGS" ]
           then
-            echo "app version (${APP_VERSION}) does not match release tag (${RELEASE_NAME})"
+            echo "no tags found pointing to changeset ${GITHUB_SHA:0:9}: not a release"
+            exit 0
+          fi
+
+          RELEASE_NAME="$(echo "$TAGS" | grep -E "^${APP_VERSION}$")"
+
+          if [ $? -ne 0 ]
+          then
+            echo "app version (${APP_VERSION}) does not match release tag(s):" $TAGS
             exit 1
           fi
+
+          echo "tagged release: $RELEASE_NAME"
+
+          echo "tag=$RELEASE_NAME" >> $GITHUB_OUTPUT
 
       - name: Set up matrices, etc.
         id: conf
@@ -313,9 +332,10 @@ jobs:
           path: dist
 
   package-release:
-    if: github.ref_type == 'tag'
+    if: needs.dist-setup.outputs.release-tag
 
     needs:
+      - dist-setup
       - package-dist
 
     runs-on: ubuntu-latest
@@ -340,4 +360,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload ${{ github.ref_name }} ./dist/*-dist-*/*
+          gh release upload ${{ needs.dist-setup.outputs.release-tag }} ./dist/*-dist-*/*
