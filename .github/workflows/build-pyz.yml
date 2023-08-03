@@ -361,11 +361,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_NAME: ${{ needs.dist-setup.outputs.release-tag }}
         run: |
-          gh release upload "$RELEASE_NAME" ./dist/*-dist-*/*
+          # github api freaking out for no apparent reason
+          gh_rc=0
 
-          if [ $? -ne 0 ]
+          gh release upload "$RELEASE_NAME" ./dist/*-dist-*/* || gh_rc=$?
+
+          if [ $gh_rc -ne 0 ]
           then
-            # github api freaking out for no apparent reason
             echo "::error::release assets attachment failed (provisionally ignored)"
             exit 0
           fi
