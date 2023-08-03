@@ -85,7 +85,7 @@ jobs:
 
           # fail workflow if neither alternates to bundle nor stand-alone
           if not alternates and not json.loads('${{ inputs.app-solo }}'):
-              print('workflow has nothing to do!')
+              print('::error::workflow has nothing to do!')
               raise SystemExit(1)
 
       - name: Check tag
@@ -102,7 +102,7 @@ jobs:
 
           if [ -z "$TAGS" ]
           then
-            echo "no tags found pointing to changeset ${GITHUB_SHA:0:9}: not a release"
+            echo "::notice::no tags found pointing to changeset ${GITHUB_SHA:0:9}: not a release"
             exit 0
           fi
 
@@ -110,7 +110,7 @@ jobs:
 
           if [ $? -ne 0 ]
           then
-            echo "app version (${APP_VERSION}) does not match release tag(s):" $TAGS
+            echo "::error::app version (${APP_VERSION}) does not match release tag(s):" $TAGS
             exit 1
           fi
 
