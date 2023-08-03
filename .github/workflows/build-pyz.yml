@@ -359,5 +359,17 @@ jobs:
       - name: Attach release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_NAME: ${{ needs.dist-setup.outputs.release-tag }}
         run: |
-          gh release upload ${{ needs.dist-setup.outputs.release-tag }} ./dist/*-dist-*/*
+          gh release upload "$RELEASE_NAME" ./dist/*-dist-*/*
+
+          if [ $? -ne 0 ]
+          then
+            # github api freaking out for no apparent reason
+            echo "::error::release assets attachment failed (provisionally ignored)"
+            exit 0
+          fi
+
+          echo "### PYZ distributions published :ship:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See https://github.com/${{ github.repository }}/releases/tag/$RELEASE_NAME" >> $GITHUB_STEP_SUMMARY
