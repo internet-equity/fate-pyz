@@ -137,6 +137,9 @@ jobs:
 
       - name: Set up matrices, etc.
         id: conf
+        env:
+          HEAD_SHA: ${{ steps.head.outputs.head-sha }}
+          RELEASE_NAME: ${{ steps.release-tag.outputs.tag }}
         run: |
           PY_VERSIONS=$(<<<'[
             {
@@ -181,9 +184,7 @@ jobs:
 
           echo "platforms=$PLATFORMS" >> $GITHUB_OUTPUT
 
-          RELEASE_NAME="${{ github.event.release.tag_name }}"
-
-          BUILD_ID="${RELEASE_NAME:-${{ github.sha }}}"
+          BUILD_ID="${RELEASE_NAME:-$HEAD_SHA}"
 
           echo "build-id=$BUILD_ID" >> $GITHUB_OUTPUT
 
@@ -213,19 +214,16 @@ jobs:
           python-version: ${{ matrix.python-version.number }}
 
       - name: Set up build dependencies
-        run: |
-          python -m pip install shiv
+        run: python -m pip install shiv
 
       - name: Set up build directories
-        run: |
-          mkdir build
+        run: mkdir build
 
       - name: Build zipapp
+        env:
+          BUILD_ID: ${{ needs.dist-setup.outputs.build-id }}
+          SHEBANG: "/usr/bin/env python${{ matrix.python-version.number }}"
         run: |
-          SHEBANG="/usr/bin/env python${{ matrix.python-version.number }}"
-
-          BUILD_ID="${{ needs.dist-setup.outputs.build-id }}"
-
           shiv -c "${{ inputs.app-main }}" -o ./build/"${{ inputs.app-main }}" -p "$SHEBANG" --build-id "$BUILD_ID" .
 
       - name: Upload build artifact
@@ -259,17 +257,14 @@ jobs:
           platforms: ${{ matrix.emulation.platform }}
 
       - name: Set up build directories
-        run: |
-          mkdir build
+        run: mkdir build
 
       - name: Build zipapp
+        env:
+          BUILD_ID: ${{ needs.dist-setup.outputs.build-id }}
+          IMAGE: "${{ matrix.emulation.repo }}/python:${{ matrix.python-version.number }}-bullseye"
+          SHEBANG: "/usr/bin/env python${{ matrix.python-version.number }}"
         run: |
-          IMAGE="${{ matrix.emulation.repo }}/python:${{ matrix.python-version.number }}-bullseye"
-
-          SHEBANG="/usr/bin/env python${{ matrix.python-version.number }}"
-
-          BUILD_ID="${{ needs.dist-setup.outputs.build-id }}"
-
           cat <<EOF | docker run -v ${PWD}:/app/ -w /app/ --rm -i "$IMAGE" sh
             python -m pip install shiv
             shiv -c "${{ inputs.app-main }}" -o ./build/"${{ inputs.app-main }}" -p "$SHEBANG" --build-id "$BUILD_ID" .
@@ -300,8 +295,7 @@ jobs:
 
     steps:
       - name: Set up work directories
-        run: |
-          mkdir build dist
+        run: mkdir build dist
 
       - name: Retrieve build artifact
         uses: actions/download-artifact@v3
@@ -366,8 +360,7 @@ jobs:
 
     steps:
       - name: Set up dist directory
-        run: |
-          mkdir dist
+        run: mkdir dist
 
       - name: Retrieve (all!) build artifacts
         uses: actions/download-artifact@v3
