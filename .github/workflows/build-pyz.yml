@@ -188,6 +188,24 @@ jobs:
 
           echo "build-id=$BUILD_ID" >> $GITHUB_OUTPUT
 
+      - name: Write manifest
+        env:
+          HEAD_SHA: ${{ steps.head.outputs.head-sha }}
+          RELEASE_NAME: ${{ steps.release-tag.outputs.tag }}
+        run: |
+          cat <<EOF > ./manifest.json
+          {
+            "resolved_sha": "$HEAD_SHA",
+            "release_name": "$RELEASE_NAME"
+          }
+          EOF
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v3
+        with:
+          name: manifest
+          path: manifest.json
+
   build-native:
     needs:
       - dist-setup
