@@ -55,7 +55,7 @@ jobs:
           echo "head-sha=${HEAD_SHA:-$GITHUB_SHA}" >> $GITHUB_OUTPUT
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ steps.head.outputs.head-sha }}
 
@@ -202,7 +202,7 @@ jobs:
           EOF
 
       - name: Upload manifest
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: manifest
           path: manifest.json
@@ -223,7 +223,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ needs.dist-setup.outputs.head-sha }}
 
@@ -246,7 +246,7 @@ jobs:
           shiv -c "${{ inputs.app-main }}" -o ./build/"${{ inputs.app-main }}" -p "$SHEBANG" --build-id "$BUILD_ID" .
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.app-main }}-pyz-py${{ matrix.python-version.label }}-x86_64
           path: build/*
@@ -266,7 +266,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ needs.dist-setup.outputs.head-sha }}
 
@@ -291,7 +291,7 @@ jobs:
           EOF
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.app-main }}-pyz-py${{ matrix.python-version.label }}-${{ matrix.emulation.arch }}
           path: build/*
@@ -318,7 +318,7 @@ jobs:
         run: mkdir build dist
 
       - name: Retrieve build artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.app-main }}-pyz-py${{ matrix.python-label }}-${{ matrix.arch }}
           path: build
@@ -328,7 +328,7 @@ jobs:
           chmod +x ./build/"${{ inputs.app-main }}"
 
       - name: Checkout fate-pyz repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           # ensure we don't grab the *calling* repository
           repository: internet-equity/fate-pyz
@@ -361,7 +361,7 @@ jobs:
           tar -cf ./dist/"${{ inputs.app-main }}"-all-"$LABEL".tar -C ./build/ "${{ inputs.app-main }}" ${ALTS[@]}
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.app-main }}-dist-${{ env.LABEL }}
           path: dist
@@ -383,7 +383,7 @@ jobs:
         run: mkdir dist
 
       - name: Retrieve (all!) build artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: dist
 
