@@ -166,6 +166,7 @@ jobs:
             {
               "arch": "aarch64",
               "platform": "arm64",
+              "platform_long": "linux/arm64/v8",
               "repo": "arm64v8"
             }
           ]' jq -c .)
@@ -280,10 +281,11 @@ jobs:
       - name: Build zipapp
         env:
           BUILD_ID: ${{ needs.dist-setup.outputs.build-id }}
-          IMAGE: "${{ matrix.emulation.repo }}/python:${{ matrix.python-version.number }}-bullseye"
+          IMAGE: "python:${{ matrix.python-version.number }}-bullseye"
+          PLATFORM: ${{ matrix.emulation.platform_long }}
           SHEBANG: "/usr/bin/env python${{ matrix.python-version.number }}"
         run: |
-          cat <<EOF | docker run -v ${PWD}:/app/ -w /app/ --rm -i "$IMAGE" sh
+          cat <<EOF | docker run -v ${PWD}:/app/ -w /app/ --rm -i --platform $PLATFORM "$IMAGE" sh
             python -m pip install shiv
             shiv -c "${{ inputs.app-main }}" -o ./build/"${{ inputs.app-main }}" -p "$SHEBANG" --build-id "$BUILD_ID" .
           EOF
